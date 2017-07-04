@@ -6,15 +6,19 @@ from PIL import Image, ImageTk
 import os
 
 #to do:
-#translation object things
-#saving
-#loading
+#translation object scroll over
+#saving to file
+#loading from file
+#click off from textbox focus - probably need break
+#deactivate active translation on escape key
 
 class Annotation(object):
     
     def __init__(self, event): #does not add to list
         self.text = "" #translation text - begins blank
+        self.active = False
         self.target_colour = "red"
+        self.active_colour = "black"
         self.outline_colour = "white"
         self.x = int(page.canvasx(event.x) / zoom_factor) #true x
         self.y = int(page.canvasy(event.y) / zoom_factor) #true y
@@ -22,30 +26,51 @@ class Annotation(object):
         self.effective_y = int(self.y * zoom_factor) #displayed y
         
         #inner background
-        self.inner_circle_inner_liner = page.create_oval(self.effective_x - 4, self.effective_y - 4, self.effective_x + 4, self.effective_y + 4, outline = self.outline_colour, tags = "translation")
-        self.inner_circle_outer_liner = page.create_oval(self.effective_x - 6, self.effective_y - 6, self.effective_x + 6, self.effective_y + 6, outline = self.outline_colour, tags = "translation")
+        self.inner_circle_inner_liner = page.create_oval(self.effective_x - 4, self.effective_y - 4, self.effective_x + 4, self.effective_y + 4, outline = self.outline_colour, tags = (self, "translation"))
+        self.inner_circle_outer_liner = page.create_oval(self.effective_x - 6, self.effective_y - 6, self.effective_x + 6, self.effective_y + 6, outline = self.outline_colour, tags = (self, "translation"))
         
         #outer background
-        self.outer_circle_inner_liner = page.create_oval(self.effective_x - 9, self.effective_y - 9, self.effective_x + 9, self.effective_y + 9, outline = self.outline_colour, tags = "translation")
-        self.outer_circle_outer_liner = page.create_oval(self.effective_x - 11, self.effective_y - 11, self.effective_x + 11, self.effective_y + 11, outline = self.outline_colour, tags = "translation")
+        self.outer_circle_inner_liner = page.create_oval(self.effective_x - 9, self.effective_y - 9, self.effective_x + 9, self.effective_y + 9, outline = self.outline_colour, tags = (self, "translation"))
+        self.outer_circle_outer_liner = page.create_oval(self.effective_x - 11, self.effective_y - 11, self.effective_x + 11, self.effective_y + 11, outline = self.outline_colour, tags = (self, "translation"))
         
         #vertical background
-        self.vline_left = page.create_line(self.effective_x - 1, self.effective_y - 15, self.effective_x - 1, self.effective_y + 15, fill = self.outline_colour, tags = "translation")
-        self.vline_right = page.create_line(self.effective_x + 1, self.effective_y - 15, self.effective_x + 1, self.effective_y + 15, fill = self.outline_colour, tags = "translation")
+        self.vline_back = page.create_rectangle(self.effective_x - 1, self.effective_y - 16, self.effective_x + 1, self.effective_y + 16, outline = self.outline_colour, tags = (self, "translation"))
         
         #horizontal background
-        self.hline_above = page.create_line(self.effective_x - 15, self.effective_y - 1, self.effective_x + 15, self.effective_y - 1, fill = self.outline_colour, tags = "translation")
-        self.hline_below = page.create_line(self.effective_x - 15, self.effective_y + 1, self.effective_x + 15, self.effective_y + 1, fill = self.outline_colour, tags = "translation")
+        self.hline_back = page.create_rectangle(self.effective_x - 16, self.effective_y - 1, self.effective_x + 16, self.effective_y + 1, outline = self.outline_colour, tags = (self, "translation"))
         
         #actual target
-        self.inner_circle = page.create_oval(self.effective_x - 5, self.effective_y - 5, self.effective_x + 5, self.effective_y + 5, outline = self.target_colour, tags = "translation")
-        self.outer_circle = page.create_oval(self.effective_x - 10, self.effective_y - 10, self.effective_x + 10, self.effective_y + 10, outline = self.target_colour, tags = "translation")
-        self.vline = page.create_line(self.effective_x, self.effective_y - 15, self.effective_x, self.effective_y + 15, fill = self.target_colour, tags = "translation")
-        self.hline = page.create_line(self.effective_x - 15, self.effective_y, self.effective_x + 15, self.effective_y, fill = self.target_colour, tags = "translation")
+        self.inner_circle = page.create_oval(self.effective_x - 5, self.effective_y - 5, self.effective_x + 5, self.effective_y + 5, outline = self.target_colour, tags = (self, "translation"))
+        self.outer_circle = page.create_oval(self.effective_x - 10, self.effective_y - 10, self.effective_x + 10, self.effective_y + 10, outline = self.target_colour, tags = (self, "translation"))
+        self.vline = page.create_line(self.effective_x, self.effective_y - 15, self.effective_x, self.effective_y + 15, fill = self.target_colour, tags = (self, "translation"))
+        self.hline = page.create_line(self.effective_x - 15, self.effective_y, self.effective_x + 15, self.effective_y, fill = self.target_colour, tags = (self, "translation"))
+        return
+    
+    #redraw the items when page loads
+    def redraw(self):
+        #inner background
+        self.inner_circle_inner_liner = page.create_oval(self.effective_x - 4, self.effective_y - 4, self.effective_x + 4, self.effective_y + 4, outline = self.outline_colour, tags = (self, "translation"))
+        self.inner_circle_outer_liner = page.create_oval(self.effective_x - 6, self.effective_y - 6, self.effective_x + 6, self.effective_y + 6, outline = self.outline_colour, tags = (self, "translation"))
+        
+        #outer background
+        self.outer_circle_inner_liner = page.create_oval(self.effective_x - 9, self.effective_y - 9, self.effective_x + 9, self.effective_y + 9, outline = self.outline_colour, tags = (self, "translation"))
+        self.outer_circle_outer_liner = page.create_oval(self.effective_x - 11, self.effective_y - 11, self.effective_x + 11, self.effective_y + 11, outline = self.outline_colour, tags = (self, "translation"))
+        
+        #vertical background
+        self.vline_back = page.create_rectangle(self.effective_x - 1, self.effective_y - 16, self.effective_x + 1, self.effective_y + 16, outline = self.outline_colour, tags = (self, "translation"))
+        
+        #horizontal background
+        self.hline_back = page.create_rectangle(self.effective_x - 16, self.effective_y - 1, self.effective_x + 16, self.effective_y + 1, outline = self.outline_colour, tags = (self, "translation"))
+        
+        #actual target
+        self.inner_circle = page.create_oval(self.effective_x - 5, self.effective_y - 5, self.effective_x + 5, self.effective_y + 5, outline = self.target_colour, tags = (self, "translation"))
+        self.outer_circle = page.create_oval(self.effective_x - 10, self.effective_y - 10, self.effective_x + 10, self.effective_y + 10, outline = self.target_colour, tags = (self, "translation"))
+        self.vline = page.create_line(self.effective_x, self.effective_y - 15, self.effective_x, self.effective_y + 15, fill = self.target_colour, tags = (self, "translation"))
+        self.hline = page.create_line(self.effective_x - 15, self.effective_y, self.effective_x + 15, self.effective_y, fill = self.target_colour, tags = (self, "translation"))
         return
     
     #redraw the items when the page zooms    
-    def redraw(self):
+    def move_zoom(self):
         #change displayed coordinates for canvas
         self.effective_x = int(self.x * zoom_factor)
         self.effective_y = int(self.y * zoom_factor)
@@ -61,12 +86,10 @@ class Annotation(object):
         page.coords(self.outer_circle_outer_liner, self.effective_x - 11, self.effective_y - 11, self.effective_x + 11, self.effective_y + 11)
         
         #vertical background
-        page.coords(self.vline_left, self.effective_x - 1, self.effective_y - 15, self.effective_x - 1, self.effective_y + 15)
-        page.coords(self.vline_right, self.effective_x + 1, self.effective_y - 15, self.effective_x + 1, self.effective_y + 15)
+        page.coords(self.vline_back, self.effective_x - 1, self.effective_y - 16, self.effective_x + 1, self.effective_y + 16)
         
         #horizontal background
-        page.coords(self.hline_above, self.effective_x - 15, self.effective_y - 1, self.effective_x + 15, self.effective_y - 1)
-        page.coords(self.hline_below, self.effective_x - 15, self.effective_y + 1, self.effective_x + 15, self.effective_y + 1)
+        page.coords(self.hline_back, self.effective_x - 16, self.effective_y - 1, self.effective_x + 16, self.effective_y + 1)
         
         #actual target
         page.coords(self.inner_circle, self.effective_x - 5, self.effective_y - 5, self.effective_x + 5, self.effective_y + 5)
@@ -75,24 +98,69 @@ class Annotation(object):
         page.coords(self.hline, self.effective_x - 15, self.effective_y, self.effective_x + 15, self.effective_y)
         return
     
-    #delete object if no longer needed
+    #activates the current object
+    def activate(self):
+        assert self.active == False, "attempted to activate already active object"
+        page.itemconfig(self.inner_circle, outline = self.active_colour)
+        page.itemconfig(self.outer_circle, outline = self.active_colour)
+        page.itemconfig(self.vline, fill = self.active_colour)
+        page.itemconfig(self.hline, fill = self.active_colour)
+        self.active = True
+        display_translation(self.text) #display own text
+        translation_textbox.focus_set()
+        global active_translation
+        active_translation = self
+        return    
+    
+    #deactivates the current object. 
+    #WARNING: do not deactivate all objects!
+    def deactivate(self):
+        assert self.active, "attempted to deactivate inactive object"
+        page.itemconfig(self.inner_circle, outline = self.target_colour)
+        page.itemconfig(self.outer_circle, outline = self.target_colour)
+        page.itemconfig(self.vline, fill = self.target_colour)
+        page.itemconfig(self.hline, fill = self.target_colour)
+        self.active = False
+        self.text = read_translation() #put textbox text in self
+        global active_translation
+        active_translation = None        
+        if self.text == "": #delete self if no text entered
+            self.delete()
+        return     
+    
+    #remove objects from page, but don't delete information.
+    #object must be inactive
+    def remove(self):
+        assert self.active == False, "attempted to remove active object"
+        page.delete(self)
+        return
+    
+    #delete object
     def delete(self):
-        WRITE_ME()
+        assert active_translation is not self, "attempted to delete active object"
+        page.delete(self)
+        translations[current_page_name.get()].remove(self)
         return
         
+# # # # # # # # # # # # # # # # # # # # # # # # End class declaration # # # # # # # # # # # # # # # # # # # # # # #
+
+#
+# Page loading functions
+#
+
 #load image and update location strings. Assumes path is valid.
 def load_page(full_path):
-    assert os.path.exists(full_path) == True #assert path is valid
+    assert os.path.exists(full_path), "load_page encountered invalid path"
     global height, width, current_image
     
     #set location strings
     page_path.set(full_path)
     page_folder.set(os.path.dirname(full_path))
     current_page_name.set(os.path.basename(full_path))
-#kind of inefficient - consider streamlining later    
+#kind of inefficient to load then fit - consider streamlining later    
     #load image
     page.image = ImageTk.PhotoImage(Image.open(page_path.get()))
-    if type(current_image) != int: #current_image initialized to str, becomes int when in use
+    if current_image == None:
         current_image = page.create_image(0, 0, anchor = NW, image = page.image)
     else:
         page.itemconfig(current_image, image = page.image)        
@@ -130,34 +198,48 @@ def set_filepath(*args):
         for file in pages_list: #add each page as key to translation dictionary
             translations[file] = []
     return
-
+    
 #load the previous page in the folder
 def prev_page(*args):
     #find the previous page
-    assert page_index in pages_list == True
+    assert (current_page_name.get() in pages_list), "current page not in page list!"
+    
+    save_page_progress()
+    
     page_index = pages_list.index(current_page_name.get())
     page_index = (page_index - 1) % len(pages_list) #prev page
     prev_page = pages_list[page_index]
     
     load_page(os.path.join(page_folder.get(), prev_page))
+    load_translations()
     return
 
 #load the next page in the folder
 def next_page(*args):
     #find the next page
-    assert page_index in pages_list == True
+    assert (current_page_name.get() in pages_list), "current page not in page list!"
+    
+    save_page_progress()
+    
     page_index = pages_list.index(current_page_name.get())
     page_index = (page_index + 1) % len(pages_list) #next page
     next_page = pages_list[page_index]
     
     load_page(os.path.join(page_folder.get(), next_page))
+    load_translations()
     return
 
 #change active page based on list selection
 def listbox_change_page(*args):
+    save_page_progress()
     selected_index = page_listbox.curselection() #get current selected name
     load_page(os.path.join(page_folder.get(), pages_list[selected_index[0]])) #load the selected page
+    load_translations()
     return
+
+#
+# Image manipulation functions
+#
 
 #resize the image to zoom in
 def resize(new_width, new_height):
@@ -183,7 +265,7 @@ def zoom(event):
     resize(int(width * zoom_factor), int(height * zoom_factor))
     
     for item in translations[current_page_name.get()]: #redraw all translation objects
-        item.redraw()
+        item.move_zoom()
     return    
 
 #fit the page to the current window size
@@ -196,10 +278,111 @@ def fit_to_canvas(*args):
     resize(int(width * zoom_factor), int(height * zoom_factor))
     return
 
+#returns the true coordinates of the image from displayed coordinates
+def true_coordinates(screen_x, screen_y):
+    return (int(page.canvasx(screen_x) / zoom_factor), int(page.canvasx(screen_y) / zoom_factor))
+
+#
+# Translation object functions
+#
+
+#find a translation or list of translations in the current page
+def find_translations(list_of_ids):
+    matches = []
+    for search_query in list_of_ids:
+        for item in translations[current_page_name.get()]:
+            if search_query == str(item):
+                matches.append(item)
+                break
+    return matches
+
+#identify whether canvas click is on existing object or not and calls correct function
+def canvas_click(event):
+    overlapping = page.find_enclosed(page.canvasx(event.x) - 15, page.canvasx(event.y) - 15, page.canvasx(event.x) + 15, page.canvasx(event.y) + 15)
+    results = []
+    for item in overlapping:
+        tags = page.gettags(item)
+        if len(tags) == 2 and tags[0] not in results:
+            results.append(tags[0])
+    if results == []:
+        new_translation(event)
+    else:
+        select_translation(find_translations(results), event)
+    return 
+
 #create a new translation object and add it to the translations dictionary
 def new_translation(event):
-    translations[current_page_name.get()].append(Annotation(event))
+    new = Annotation(event)
+    translations[current_page_name.get()].append(new)
+    activate_translation(new)
     return
+
+def activate_translation(new_active_translation):
+    if active_translation is not new_active_translation: #do not reactivate active translation
+        #deactivate previously active translation    
+        if active_translation is not None:    
+            active_translation.deactivate()    
+        
+        #activate selected translation
+        new_active_translation.activate()
+    return
+
+#activates the translation closest to click
+def select_translation(translations, event):
+    assert len(translations) > 0, "activate_translations encountered empty results list"
+    
+    if len(translations) > 1: #if more than one result, find the one that's closest
+        distances = [] #same order as translations
+        x, y = true_coordinates(event.x, event.y)
+        for result in translations:
+            distances.append((result.x - x) ** 2 + (result.y - y) ** 2)
+        closest = translations[distances.index(min(distances))]
+    else:
+        closest = translations[0]
+    
+    activate_translation(closest)
+    return
+
+#
+# Textbox functions
+#
+
+def display_translation(text):
+    translation_textbox.delete("1.0", END)
+    translation_textbox.insert("1.0", text)
+    return
+
+def read_translation():
+    translation_text = translation_textbox.get("1.0", "end-1c")
+    translation_textbox.delete("1.0", END)
+    return translation_text
+
+#
+# Saving and loading functions
+#
+
+#save all translation progress before moving pages
+def save_page_progress(*args):
+    for item in translations[current_page_name.get()]: #remove items from screen
+        if item.active: #reset all active objects before changing pages
+            item.deactivate()
+        item.remove()
+    return
+
+def load_translations(*args):
+    for item in translations[current_page_name.get()]:
+        item.redraw()
+    return
+
+#save all translations to file
+def save(*args):
+    save_page_progress() #deactivates active translation and stores textbox text
+    #WRITE_ME()
+    return
+    
+#
+# There's a problem if this is still used somewhere.
+#
 
 #Temporary function
 def WRITE_ME(*args):
@@ -219,7 +402,8 @@ pages_list = [] #list of all files in the folder
 zoom_factor = 1 #zoom into the page
 height = 1 #image true height
 width = 1 #image true width
-current_image = "" #becomes int when image
+current_image = None #becomes int when image
+active_translation = None #the selected translation
 translations = {} #holds translation objects for the entire folder
 
 #App frame and settings
@@ -275,10 +459,9 @@ canvas_hbar.config(command = page.xview)
 page.config(xscrollcommand = canvas_hbar.set, yscrollcommand = canvas_vbar.set)
 page.pack(side = LEFT, fill = BOTH, expand = YES) #canvas takes up rest of space
 
-#Text box
-translation_text = ScrolledText(frame)
-translation_text["height"] = 5 #number of lines
-translation_text.grid(row = 2, column = 1, columnspan = 2, sticky = (W, E))
+#Text box for translations
+translation_textbox = ScrolledText(frame, wrap = 'word', height = 5)
+translation_textbox.grid(row = 2, column = 1, columnspan = 2, sticky = (W, E))
 
 #Stretch configurations
 root.columnconfigure(0, weight = 1) #main window
@@ -290,6 +473,6 @@ menu_frame.rowconfigure(3, weight = 1) #listbox
 #Event bindings
 page_listbox.bind("<Double-Button-1>", listbox_change_page) #change active page by listbox
 page.bind("<MouseWheel>", zoom) #zoom using the mouse wheel
-page.bind("<Button-1>", new_translation) #create a new object
+page.bind("<Button-1>", canvas_click) #create a new object
 
 root.mainloop()

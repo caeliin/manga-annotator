@@ -1,24 +1,22 @@
+# This program loads images from a folder into a GUI and allows placing objects
+# onto the images with associated text.
+
 from tkinter import *
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter.scrolledtext import ScrolledText
 from PIL import Image, ImageTk
-import os
-
-#to do:
-#translation object scroll over
-#saving to file
-#loading from file
-#click off from textbox focus - probably need break
-#deactivate active translation on escape key
+import os, shelve
 
 class Annotation(object):
     
     def __init__(self, event): #does not add to list
         self.text = "" #translation text - begins blank
         self.active = False
-        self.target_colour = "red"
-        self.active_colour = "black"
+        self.mouseover = False
+        self.target_colour = "black"
+        self.active_colour = "red4"
+        self.mouseover_colour = "DarkSlateGray4"
         self.outline_colour = "white"
         self.x = int(page.canvasx(event.x) / zoom_factor) #true x
         self.y = int(page.canvasy(event.y) / zoom_factor) #true y
@@ -48,6 +46,9 @@ class Annotation(object):
     
     #redraw the items when page loads
     def redraw(self):
+        self.effective_x = int(self.x * zoom_factor) #displayed x
+        self.effective_y = int(self.y * zoom_factor) #displayed y        
+        
         #inner background
         self.inner_circle_inner_liner = page.create_oval(self.effective_x - 4, self.effective_y - 4, self.effective_x + 4, self.effective_y + 4, outline = self.outline_colour, tags = (self, "translation"))
         self.inner_circle_outer_liner = page.create_oval(self.effective_x - 6, self.effective_y - 6, self.effective_x + 6, self.effective_y + 6, outline = self.outline_colour, tags = (self, "translation"))
@@ -98,17 +99,23 @@ class Annotation(object):
         page.coords(self.hline, self.effective_x - 15, self.effective_y, self.effective_x + 15, self.effective_y)
         return
     
+    def change_colour(self, colour):
+        page.itemconfig(self.inner_circle, outline = colour)
+        page.itemconfig(self.outer_circle, outline = colour)
+        page.itemconfig(self.vline, fill = colour)
+        page.itemconfig(self.hline, fill = colour)        
+        return
+    
     #activates the current object
     def activate(self):
         assert self.active == False, "attempted to activate already active object"
-        page.itemconfig(self.inner_circle, outline = self.active_colour)
-        page.itemconfig(self.outer_circle, outline = self.active_colour)
-        page.itemconfig(self.vline, fill = self.active_colour)
-        page.itemconfig(self.hline, fill = self.active_colour)
+        global active_translation
+        assert active_translation is not self, "object is already set as active object"
+        self.change_colour(self.active_colour)
         self.active = True
         display_translation(self.text) #display own text
         translation_textbox.focus_set()
-        global active_translation
+        
         active_translation = self
         return    
     
@@ -116,18 +123,35 @@ class Annotation(object):
     #WARNING: do not deactivate all objects!
     def deactivate(self):
         assert self.active, "attempted to deactivate inactive object"
-        page.itemconfig(self.inner_circle, outline = self.target_colour)
-        page.itemconfig(self.outer_circle, outline = self.target_colour)
-        page.itemconfig(self.vline, fill = self.target_colour)
-        page.itemconfig(self.hline, fill = self.target_colour)
+        global active_translation
+        assert active_translation == self, "object not current active translation"
+        self.change_colour(self.target_colour)
         self.active = False
         self.text = read_translation() #put textbox text in self
-        global active_translation
+
         active_translation = None        
         if self.text == "": #delete self if no text entered
             self.delete()
         return     
     
+    def mouseover_in(self):
+        global mouseover_translation
+        assert mouseover_translation == None, "mouseover_translation already filled"
+        self.change_colour(self.mouseover_colour)
+        display_translation(self.text)
+        mouseover_translation = self
+        self.mouseover = True
+        return
+    
+    def mouseover_out(self):
+        global mouseover_translation
+        assert mouseover_translation == self, "attempted to de-mouseover non mouseovered object"
+        self.change_colour(self.target_colour)
+        translation_textbox.delete("1.0", END) #clear translation box
+        mouseover_translation = None
+        self.mouseover = False
+        return        
+
     #remove objects from page, but don't delete information.
     #object must be inactive
     def remove(self):
@@ -137,7 +161,7 @@ class Annotation(object):
     
     #delete object
     def delete(self):
-        assert active_translation is not self, "attempted to delete active object"
+        assert active_translation is not self, "attempted to delete the active object"
         page.delete(self)
         translations[current_page_name.get()].remove(self)
         return
@@ -153,6 +177,9 @@ def load_page(full_path):
     assert os.path.exists(full_path), "load_page encountered invalid path"
     global height, width, current_image
     
+    if current_image is not None: #save any old progress
+        save_page_progress()
+        
     #set location strings
     page_path.set(full_path)
     page_folder.set(os.path.dirname(full_path))
@@ -163,7 +190,7 @@ def load_page(full_path):
     if current_image == None:
         current_image = page.create_image(0, 0, anchor = NW, image = page.image)
     else:
-        page.itemconfig(current_image, image = page.image)        
+        page.itemconfig(current_image, image = page.image)      
     
     #set sizes
     width = page.image.width()
@@ -192,41 +219,50 @@ def set_filepath(*args):
         page_listbox.delete(0, END)
         for file in pages_list:
             page_listbox.insert(END, file)
-        
-        global translations
-        translations = {} #reset translation objects dictionary
-        for file in pages_list: #add each page as key to translation dictionary
-            translations[file] = []
+            
+        #load translations
+        global translations, save_file
+        save_file = shelve.open(os.path.join(page_folder.get(), 'translations'), writeback = True)
+        if 'translations' in list(save_file.keys()): #if save data exists
+            translations = save_file['translations']
+            load_translations()
+        else: #if no save file, reset to blank
+            translations = {} #reset translation objects dictionary
+            for file in pages_list: #add each page as key to translation dictionary
+                translations[file] = []
     return
     
 #load the previous page in the folder
 def prev_page(*args):
     #find the previous page
-    assert (current_page_name.get() in pages_list), "current page not in page list!"
     
-    save_page_progress()
-    
-    page_index = pages_list.index(current_page_name.get())
-    page_index = (page_index - 1) % len(pages_list) #prev page
-    prev_page = pages_list[page_index]
-    
-    load_page(os.path.join(page_folder.get(), prev_page))
-    load_translations()
+    if current_image is not None:
+        assert (current_page_name.get() in pages_list), "current page not in page list!"
+        
+        save_page_progress()
+        
+        page_index = pages_list.index(current_page_name.get())
+        page_index = (page_index - 1) % len(pages_list) #prev page
+        prev_page = pages_list[page_index]
+        
+        load_page(os.path.join(page_folder.get(), prev_page))
+        load_translations()
     return
 
 #load the next page in the folder
 def next_page(*args):
     #find the next page
-    assert (current_page_name.get() in pages_list), "current page not in page list!"
-    
-    save_page_progress()
-    
-    page_index = pages_list.index(current_page_name.get())
-    page_index = (page_index + 1) % len(pages_list) #next page
-    next_page = pages_list[page_index]
-    
-    load_page(os.path.join(page_folder.get(), next_page))
-    load_translations()
+    if current_image is not None:
+        assert (current_page_name.get() in pages_list), "current page not in page list!"
+        
+        save_page_progress()
+        
+        page_index = pages_list.index(current_page_name.get())
+        page_index = (page_index + 1) % len(pages_list) #next page
+        next_page = pages_list[page_index]
+        
+        load_page(os.path.join(page_folder.get(), next_page))
+        load_translations()
     return
 
 #change active page based on list selection
@@ -280,7 +316,7 @@ def fit_to_canvas(*args):
 
 #returns the true coordinates of the image from displayed coordinates
 def true_coordinates(screen_x, screen_y):
-    return (int(page.canvasx(screen_x) / zoom_factor), int(page.canvasx(screen_y) / zoom_factor))
+    return (int(page.canvasx(screen_x) / zoom_factor), int(page.canvasy(screen_y) / zoom_factor))
 
 #
 # Translation object functions
@@ -298,16 +334,21 @@ def find_translations(list_of_ids):
 
 #identify whether canvas click is on existing object or not and calls correct function
 def canvas_click(event):
-    overlapping = page.find_enclosed(page.canvasx(event.x) - 15, page.canvasx(event.y) - 15, page.canvasx(event.x) + 15, page.canvasx(event.y) + 15)
-    results = []
-    for item in overlapping:
-        tags = page.gettags(item)
-        if len(tags) == 2 and tags[0] not in results:
-            results.append(tags[0])
-    if results == []:
-        new_translation(event)
-    else:
-        select_translation(find_translations(results), event)
+    if current_image is not None:
+        overlapping = page.find_enclosed(page.canvasx(event.x) - 15, page.canvasy(event.y) - 15, page.canvasx(event.x) + 15, page.canvasy(event.y) + 15)
+        results = []
+        for item in overlapping:
+            tags = page.gettags(item)
+            if len(tags) == 2 and tags[0] not in results:
+                results.append(tags[0])
+        if results == []:
+            if int(page.canvasx(event.x)) < int(width * zoom_factor) and int(page.canvasy(event.y)) < int(height * zoom_factor): #if on image
+                new_translation(event)
+            else:
+                textbox_out()
+                page.focus_set()
+        else:
+            activate_translation(find_closest_translation(find_translations(results), event))
     return 
 
 #create a new translation object and add it to the translations dictionary
@@ -328,7 +369,7 @@ def activate_translation(new_active_translation):
     return
 
 #activates the translation closest to click
-def select_translation(translations, event):
+def find_closest_translation(translations, event):
     assert len(translations) > 0, "activate_translations encountered empty results list"
     
     if len(translations) > 1: #if more than one result, find the one that's closest
@@ -339,8 +380,62 @@ def select_translation(translations, event):
         closest = translations[distances.index(min(distances))]
     else:
         closest = translations[0]
-    
-    activate_translation(closest)
+    return closest
+
+#event binding: determine if mouse is over translation and act accordingly
+def mouseover(event):
+    if current_image is not None and active_translation == None:
+        overlapping = page.find_enclosed(page.canvasx(event.x) - 15, page.canvasy(event.y) - 15, page.canvasx(event.x) + 15, page.canvasy(event.y) + 15)
+        results = []
+        for item in overlapping:
+            tags = page.gettags(item)
+            if len(tags) == 2 and tags[0] not in results:
+                results.append(tags[0])
+        if len(results) > 0:
+            closest = find_closest_translation(find_translations(results), event)
+            if mouseover_translation is not closest:
+                if mouseover_translation is not None:
+                    mouseover_translation.mouseover_out()
+                    closest.mouseover_in()
+                else:
+                    closest.mouseover_in()
+        else:
+            if mouseover_translation is not None:
+                mouseover_translation.mouseover_out()
+    return
+
+#colour changing functions
+def black(*args):
+    if active_translation is not None:
+        active_translation.target_colour = "black"
+    return
+def red(*args):
+    if active_translation is not None:
+        active_translation.target_colour = "red"
+    return
+def DarkOrange2(*args):
+    if active_translation is not None:
+        active_translation.target_colour = "DarkOrange2"
+    return
+def gold3(*args):
+    if active_translation is not None:
+        active_translation.target_colour = "gold3"
+    return
+def green4(*args):
+    if active_translation is not None:
+        active_translation.target_colour = "green4"
+    return
+def blue(*args):
+    if active_translation is not None:
+        active_translation.target_colour = "blue"
+    return
+def purple4(*args):
+    if active_translation is not None:
+        active_translation.target_colour = "purple4"
+    return
+def DeepPink3(*args):
+    if active_translation is not None:
+        active_translation.target_colour = "DeepPink3"
     return
 
 #
@@ -357,6 +452,13 @@ def read_translation():
     translation_textbox.delete("1.0", END)
     return translation_text
 
+#event binding: deactivates active translation
+def textbox_out(*args):
+    if active_translation is not None:    
+        active_translation.deactivate()
+        save()
+    return    
+    
 #
 # Saving and loading functions
 #
@@ -366,7 +468,10 @@ def save_page_progress(*args):
     for item in translations[current_page_name.get()]: #remove items from screen
         if item.active: #reset all active objects before changing pages
             item.deactivate()
-        item.remove()
+        item.remove() #clear screen of objects
+    if mouseover_translation is not None:
+        mouseover_translation.mouseover_out()
+    save()
     return
 
 def load_translations(*args):
@@ -376,17 +481,13 @@ def load_translations(*args):
 
 #save all translations to file
 def save(*args):
-    save_page_progress() #deactivates active translation and stores textbox text
-    #WRITE_ME()
+    if current_image is not None:
+        assert os.path.exists(page_folder.get()), "save directory does not exist" #don't try to save to something invalid
+        save_file['translations'] = translations
+        save_file.sync()
     return
-    
-#
-# There's a problem if this is still used somewhere.
-#
 
-#Temporary function
-def WRITE_ME(*args):
-    pass
+# # # # # # # # # # # # # # # # # # # # # # # # End function declarations # # # # # # # # # # # # # # # # # # # # # # #
 
 #App basics
 root = Tk()
@@ -397,13 +498,15 @@ page_path = StringVar() #full path of the current page
 page_folder = StringVar() #path to the directory
 current_page_name = StringVar() #file name of the current page
 pages_list = [] #list of all files in the folder
+save_file = None #holds save file
 
 #other (global) variables
 zoom_factor = 1 #zoom into the page
 height = 1 #image true height
 width = 1 #image true width
-current_image = None #becomes int when image
+current_image = None #holds displayed image
 active_translation = None #the selected translation
+mouseover_translation = None #translation being mouseover'd
 translations = {} #holds translation objects for the entire folder
 
 #App frame and settings
@@ -420,12 +523,13 @@ menu_frame.grid(row = 1, column = 2, sticky = (N, S))
 #Open file
 ttk.Button(menu_frame, text = "Open", command = set_filepath).grid(row = 1, column = 1, columnspan = 2, sticky = (N, E, W))
 
-#Save
-ttk.Button(menu_frame, text = "Save", command = WRITE_ME).grid(row = 2, column = 1, columnspan = 2, sticky = (N, E, W))
+#Display current page name
+ttk.Label(menu_frame, text = "Current:").grid(row = 2, column = 1, columnspan = 2, padx = 2, sticky = (N, E, W))
+ttk.Label(menu_frame, textvariable = current_page_name).grid(row = 3, column = 1, columnspan = 2, padx = 2, sticky = (N, E, W))
 
 #List of pages
 listbox_frame = ttk.Frame(menu_frame) #frame for the box
-listbox_frame.grid(row = 3, column = 1, columnspan = 3, sticky = (N, S, E, W))
+listbox_frame.grid(row = 4, column = 1, columnspan = 3, sticky = (N, S, E, W))
 
 page_listbox = Listbox(listbox_frame, selectmode = SINGLE, height = 10, width = 15) #Listbox itself
 page_listbox.pack(side = LEFT, fill = BOTH, expand = YES)
@@ -436,9 +540,21 @@ listbox_scrollbar.pack(side = RIGHT, fill = Y)
 listbox_scrollbar.config(command = page_listbox.yview) #connect the two
 page_listbox.config(yscrollcommand = listbox_scrollbar.set)
 
+#colour changes
+colour_frame = ttk.Frame(menu_frame)
+colour_frame.grid(row = 5, column = 1, columnspan = 2, pady = 3, sticky = S)
+Button(colour_frame, width = 2, borderwidth = 1, activebackground = "black", background = "black", relief = SUNKEN, command = black).grid(row = 2, column = 1)
+Button(colour_frame, width = 2, borderwidth = 1, activebackground = "red", background = "red", relief = SUNKEN, command = red).grid(row = 2, column = 2)
+Button(colour_frame, width = 2, borderwidth = 1, activebackground = "DarkOrange2", background = "DarkOrange2", relief = SUNKEN, command = DarkOrange2).grid(row = 2, column = 3)
+Button(colour_frame, width = 2, borderwidth = 1, activebackground = "gold3", background = "gold3", relief = SUNKEN, command = gold3).grid(row = 2, column = 4)
+Button(colour_frame, width = 2, borderwidth = 1, activebackground = "green4", background = "green4", relief = SUNKEN, command = green4).grid(row = 3, column = 1)
+Button(colour_frame, width = 2, borderwidth = 1, activebackground = "blue", background = "blue", relief = SUNKEN, command = blue).grid(row = 3, column = 2)
+Button(colour_frame, width = 2, borderwidth = 1, activebackground = "purple4", background = "purple4", relief = SUNKEN, command = purple4).grid(row = 3, column = 3)
+Button(colour_frame, width = 2, borderwidth = 1, activebackground = "DeepPink3", background = "DeepPink3", relief = SUNKEN, command = DeepPink3).grid(row = 3, column = 4)
+
 #Prev and Next buttons
-ttk.Button(menu_frame, text = "<", width = 5, command = prev_page).grid(row = 4, column = 1, sticky = (S, E)) #prev
-ttk.Button(menu_frame, text = ">", width = 5, command = next_page).grid(row = 4, column = 2, sticky = (S, W)) #next
+ttk.Button(menu_frame, text = "<", width = 5, command = prev_page).grid(row = 6, column = 1, sticky = (S, E)) #prev
+ttk.Button(menu_frame, text = ">", width = 5, command = next_page).grid(row = 6, column = 2, sticky = (S, W)) #next
 
 #create page image (canvas)
 canvas_frame = ttk.Frame(frame) #frame to hold canvas
@@ -460,19 +576,22 @@ page.config(xscrollcommand = canvas_hbar.set, yscrollcommand = canvas_vbar.set)
 page.pack(side = LEFT, fill = BOTH, expand = YES) #canvas takes up rest of space
 
 #Text box for translations
-translation_textbox = ScrolledText(frame, wrap = 'word', height = 5)
+translation_textbox = ScrolledText(frame, wrap = 'word', height = 5, undo = True)
 translation_textbox.grid(row = 2, column = 1, columnspan = 2, sticky = (W, E))
 
 #Stretch configurations
 root.columnconfigure(0, weight = 1) #main window
 root.rowconfigure(0, weight = 1) #main window
-frame.columnconfigure(1, weight = 1, minsize = 300) #canvas frame
-frame.rowconfigure(1, weight = 1, minsize = 600) #canvas frame
-menu_frame.rowconfigure(3, weight = 1) #listbox
+frame.columnconfigure(1, weight = 1, minsize = 300) #canvas frame x
+frame.rowconfigure(1, weight = 1, minsize = 745) #canvas frame y
+menu_frame.rowconfigure(4, weight = 1) #listbox
 
 #Event bindings
 page_listbox.bind("<Double-Button-1>", listbox_change_page) #change active page by listbox
 page.bind("<MouseWheel>", zoom) #zoom using the mouse wheel
 page.bind("<Button-1>", canvas_click) #create a new object
+page.bind("<Motion>", mouseover)
+translation_textbox.bind("<FocusOut>", textbox_out) #focus off of text box
+translation_textbox.bind("<Escape>", textbox_out) #press esc when editing
 
 root.mainloop()

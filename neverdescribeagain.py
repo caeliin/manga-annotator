@@ -310,9 +310,10 @@ def next_page(*args):
 #change active page based on list selection
 def listbox_change_page(*args):
     save_page_progress()
-    selected_index = page_listbox.curselection() #get current selected name
-    load_page(os.path.join(page_folder.get(), pages_list[selected_index[0]])) #load the selected page
-    load_translations()
+    if len(pages_list) > 0: #if pages are actually loaded
+        selected_index = page_listbox.curselection() #get current selected name
+        load_page(os.path.join(page_folder.get(), pages_list[selected_index[0]])) #load the selected page
+        load_translations()
     return
 
 #
@@ -330,20 +331,21 @@ def resize(new_width, new_height):
 
 #resize the page when scrolled on
 def zoom(event):
-    global zoom_factor
-    if event.delta < 0: #scroll down
-        zoom_factor /= 1.1
-    if event.delta > 0: #scroll up
-        zoom_factor *= 1.1
-    
-    min_zoom = min((page.winfo_height() - 4) / height, (page.winfo_width() - 4) / width)
-    if zoom_factor < min_zoom: #cannot zoom out past at least two opposite edges touching edges of canvas
-        zoom_factor = min_zoom
-    
-    resize(int(width * zoom_factor), int(height * zoom_factor))
-    
-    for item in translations[current_page_name.get()]: #redraw all translation objects
-        item.move_zoom()
+    if current_image is not None:
+        global zoom_factor
+        if event.delta < 0: #scroll down
+            zoom_factor /= 1.1
+        if event.delta > 0: #scroll up
+            zoom_factor *= 1.1
+        
+        min_zoom = min((page.winfo_height() - 4) / height, (page.winfo_width() - 4) / width)
+        if zoom_factor < min_zoom: #cannot zoom out past at least two opposite edges touching edges of canvas
+            zoom_factor = min_zoom
+        
+        resize(int(width * zoom_factor), int(height * zoom_factor))
+        
+        for item in translations[current_page_name.get()]: #redraw all translation objects
+            item.move_zoom()
     return    
 
 #fit the page to the current window size
@@ -486,6 +488,7 @@ def mouseover(event):
         drag_y = event.y
     return
 
+#delete button: deletes the active translation
 def delete_translation(*args):
     if active_translation is not None:
         to_be_deleted = active_translation
@@ -550,17 +553,19 @@ def DeepPink3(*args):
 # Textbox functions
 #
 
+#display text in the textbox
 def display_translation(text):
     translation_textbox.delete("1.0", END)
     translation_textbox.insert("1.0", text)
     return
 
+#return contents of the textbox
 def read_translation():
     translation_text = translation_textbox.get("1.0", "end-1c")
     translation_textbox.delete("1.0", END)
     return translation_text
 
-#event binding: deactivates active translation
+#event binding: deactivates active translation when clicking out
 def textbox_out(*args):
     if active_translation is not None:    
         active_translation.deactivate()
@@ -573,15 +578,17 @@ def textbox_out(*args):
 
 #save all translation progress before moving pages
 def save_page_progress(*args):
-    for item in translations[current_page_name.get()]: #remove items from screen
-        if item.active: #reset all active objects before changing pages
-            item.deactivate()
-        item.remove() #clear screen of objects
-    if mouseover_translation is not None:
-        mouseover_translation.mouseover_out()
-    save()
+    if current_page_name.get() is not "":
+        for item in translations[current_page_name.get()]: #remove items from screen
+            if item.active: #reset all active objects before changing pages
+                item.deactivate()
+            item.remove() #clear screen of objects
+        if mouseover_translation is not None:
+            mouseover_translation.mouseover_out()
+        save()
     return
 
+#draw all existing translations
 def load_translations(*args):
     for item in translations[current_page_name.get()]:
         item.redraw()
@@ -589,7 +596,7 @@ def load_translations(*args):
 
 #save all translations to file
 def save(*args):
-    if current_image is not None:
+    if current_image is not None: #if page actually loaded
         assert os.path.exists(page_folder.get()), "save directory does not exist" #don't try to save to something invalid
         save_file['translations'] = translations
         save_file.sync()

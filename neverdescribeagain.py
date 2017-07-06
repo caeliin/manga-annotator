@@ -15,9 +15,9 @@ class Annotation(object):
         self.text = "" #translation text - begins blank
         self.active = False
         self.mouseover = False
-        self.target_colour = "black"
-        self.active_colour = "red4"
-        self.mouseover_colour = "DarkSlateGray4"
+        self.target_colour = "red"
+        self.active_colour = "gray55"
+        self.mouseover_colour = "gray38"
         self.outline_colour = "white"
         self.x = int(page.canvasx(event.x) / zoom_factor) #true x
         self.y = int(page.canvasy(event.y) / zoom_factor) #true y
@@ -194,18 +194,28 @@ class Annotation(object):
 #load image and update location strings. Assumes path is valid.
 def load_page(full_path):
     assert os.path.exists(full_path), "load_page encountered invalid path"
+    
+    try: #check if image is load-able
+            new_image = ImageTk.PhotoImage(Image.open(full_path))
+    except: #throw an error and abort if not
+            file_extension = os.path.basename(full_path)[os.path.basename(full_path).rfind('.'):]
+            messagebox.showerror("Unable to load file", "Unable to load filetype " + file_extension + ".")      
+            return False #abort and return failure for set_filepath() to deal with   
+
     global height, width, current_image
     
     if current_image is not None: #save any old progress
         save_page_progress()
-        
+
     #set location strings
     page_path.set(full_path)
     page_folder.set(os.path.dirname(full_path))
     current_page_name.set(os.path.basename(full_path))
 #kind of inefficient to load then fit - consider streamlining later    
-    #load image
-    page.image = ImageTk.PhotoImage(Image.open(page_path.get()))
+    
+    #load image to page
+    page.image = ImageTk.PhotoImage(Image.open(page_path.get())) 
+    
     if current_image == None:
         current_image = page.create_image(0, 0, anchor = NW, image = page.image)
     else:
@@ -215,52 +225,53 @@ def load_page(full_path):
     width = page.image.width()
     height = page.image.height()
     fit_to_canvas()
-    return
+    return True
 
 #open a file
 def set_filepath(*args):
     path = filedialog.askopenfilename()        
     if os.path.exists(path): #if file actually selected
         
-        load_page(path)
+        loaded_successfully = load_page(path)
         
-        #load other files in folder
-        folder_contents = os.listdir(page_folder.get())
-        file_extension = current_page_name.get()[current_page_name.get().find("."):]
-        
-        global pages_list
-        pages_list = [] #reset list of pages
-        for file in folder_contents:
-            if file.endswith(file_extension): #only add file if same extension as selected file (exclude save and other files)
-                pages_list.append(file)
-#TEMPORARY        
-        #number_pages.set(str(len(pages_list)))       
-        
-        #limit pages if too many
-        if len(pages_list) > 300:
-            current_page_index = pages_list.index(current_page_name.get())
-            lower_limit = max(0, current_page_index - 300)
-            upper_limit = min(current_page_index + 300, len(pages_list))
-            pages_list = pages_list[lower_limit : upper_limit]
-        
-        #update listbox of pages
-        page_listbox.delete(0, END)
-        for file in pages_list:
-            page_listbox.insert(END, file)
+        if loaded_successfully:
+            #load other files in folder
+            folder_contents = os.listdir(page_folder.get())
+            file_extension = current_page_name.get()[current_page_name.get().find("."):]
             
-        #load translations
-        global translations, save_file
-        save_file = shelve.open(os.path.join(page_folder.get(), 'translations'), writeback = True)
-        if 'translations' in list(save_file.keys()): #if save data exists
-            translations = save_file['translations']
-            for file in pages_list: #if pages are missing from dictionary
-                if file not in translations:
+            global pages_list
+            pages_list = [] #reset list of pages
+            for file in folder_contents:
+                if file.endswith(file_extension): #only add file if same extension as selected file (exclude save and other files)
+                    pages_list.append(file)
+#TEMPORARY: show page count       
+            #number_pages.set(str(len(pages_list)))       
+            
+            #limit pages if too many
+            if len(pages_list) > 300:
+                current_page_index = pages_list.index(current_page_name.get())
+                lower_limit = max(0, current_page_index - 300)
+                upper_limit = min(current_page_index + 300, len(pages_list))
+                pages_list = pages_list[lower_limit : upper_limit]
+            
+            #update listbox of pages
+            page_listbox.delete(0, END)
+            for file in pages_list:
+                page_listbox.insert(END, file)
+                
+            #load translations
+            global translations, save_file
+            save_file = shelve.open(os.path.join(page_folder.get(), 'translations'), writeback = True)
+            if save_file.__contains__('translations'): #if save data exists
+                translations = save_file['translations']
+                for file in pages_list: #if pages are missing from dictionary
+                    if file not in translations:
+                        translations[file] = []
+                load_translations()
+            else: #if no save file, reset to blank
+                translations = {} #reset translation objects dictionary
+                for file in pages_list: #add each page as key to translation dictionary
                     translations[file] = []
-            load_translations()
-        else: #if no save file, reset to blank
-            translations = {} #reset translation objects dictionary
-            for file in pages_list: #add each page as key to translation dictionary
-                translations[file] = []
     return
     
 #load the previous page in the folder
@@ -497,34 +508,42 @@ def delete_translation(*args):
 def black(*args):
     if active_translation is not None:
         active_translation.target_colour = "black"
+        active_translation.change_colour("black")
     return
 def red(*args):
     if active_translation is not None:
         active_translation.target_colour = "red"
+        active_translation.change_colour("red")
     return
 def DarkOrange2(*args):
     if active_translation is not None:
         active_translation.target_colour = "DarkOrange2"
+        active_translation.change_colour("DarkOrange2")
     return
 def gold3(*args):
     if active_translation is not None:
         active_translation.target_colour = "gold3"
+        active_translation.change_colour("gold3")
     return
 def green4(*args):
     if active_translation is not None:
         active_translation.target_colour = "green4"
+        active_translation.change_colour("green4")
     return
 def blue(*args):
     if active_translation is not None:
         active_translation.target_colour = "blue"
+        active_translation.change_colour("blue")
     return
 def purple4(*args):
     if active_translation is not None:
-        active_translation.target_colour = "purple4"
+        active_translation.target_colour = "purple3"
+        active_translation.change_colour("purple3")
     return
 def DeepPink3(*args):
     if active_translation is not None:
         active_translation.target_colour = "DeepPink3"
+        active_translation.change_colour("DeepPink3")
     return
 
 #
@@ -645,7 +664,7 @@ Button(colour_frame, width = 2, borderwidth = 1, activebackground = "DarkOrange2
 Button(colour_frame, width = 2, borderwidth = 1, activebackground = "gold3", background = "gold3", relief = SUNKEN, command = gold3).grid(row = 2, column = 4)
 Button(colour_frame, width = 2, borderwidth = 1, activebackground = "green4", background = "green4", relief = SUNKEN, command = green4).grid(row = 3, column = 1)
 Button(colour_frame, width = 2, borderwidth = 1, activebackground = "blue", background = "blue", relief = SUNKEN, command = blue).grid(row = 3, column = 2)
-Button(colour_frame, width = 2, borderwidth = 1, activebackground = "purple4", background = "purple4", relief = SUNKEN, command = purple4).grid(row = 3, column = 3)
+Button(colour_frame, width = 2, borderwidth = 1, activebackground = "purple3", background = "purple3", relief = SUNKEN, command = purple4).grid(row = 3, column = 3)
 Button(colour_frame, width = 2, borderwidth = 1, activebackground = "DeepPink3", background = "DeepPink3", relief = SUNKEN, command = DeepPink3).grid(row = 3, column = 4)
 
 #Delete

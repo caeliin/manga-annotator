@@ -23,6 +23,7 @@ Editing translations
 - Click a translation to make it active and view / edit its text.
 - To deselect the active translation, hit "Esc" on the keyboard or click elsewhere on the program.
 - With a translation active, click one of the colours below the list of pages to change its display colour.
+- With a translation active, drag it to move it.
 
 Reading translations
 - When no translations are active, move the mouse over translations to display their text in the textbox.

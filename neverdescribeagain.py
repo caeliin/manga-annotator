@@ -5,6 +5,7 @@ from tkinter import *
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter.scrolledtext import ScrolledText
+from tkinter import messagebox
 from PIL import Image, ImageTk
 import os, shelve
 
@@ -70,6 +71,23 @@ class Annotation(object):
         self.hline = page.create_line(self.effective_x - 15, self.effective_y, self.effective_x + 15, self.effective_y, fill = self.target_colour, tags = (self, "translation"))
         return
     
+    #shifts all items
+    def move(self, screen_delta_x, screen_delta_y):
+        page.move(self.inner_circle_inner_liner, screen_delta_x, screen_delta_y)
+        page.move(self.inner_circle_outer_liner, screen_delta_x, screen_delta_y)
+        page.move(self.outer_circle_inner_liner, screen_delta_x, screen_delta_y)
+        page.move(self.outer_circle_outer_liner, screen_delta_x, screen_delta_y)
+        page.move(self.vline_back, screen_delta_x, screen_delta_y)
+        page.move(self.hline_back, screen_delta_x, screen_delta_y)
+        page.move(self.inner_circle, screen_delta_x, screen_delta_y)
+        page.move(self.outer_circle, screen_delta_x, screen_delta_y)
+        page.move(self.vline, screen_delta_x, screen_delta_y)
+        page.move(self.hline, screen_delta_x, screen_delta_y)
+        self.x += screen_delta_x / zoom_factor
+        self.y += screen_delta_y / zoom_factor
+        self.effective_x += screen_delta_x
+        self.effective_y += screen_delta_y
+        
     #redraw the items when the page zooms    
     def move_zoom(self):
         #change displayed coordinates for canvas
@@ -164,6 +182,7 @@ class Annotation(object):
         assert active_translation is not self, "attempted to delete the active object"
         page.delete(self)
         translations[current_page_name.get()].remove(self)
+        page.focus_set()
         return
         
 # # # # # # # # # # # # # # # # # # # # # # # # End class declaration # # # # # # # # # # # # # # # # # # # # # # #
@@ -212,8 +231,17 @@ def set_filepath(*args):
         global pages_list
         pages_list = [] #reset list of pages
         for file in folder_contents:
-            if file_extension in file: #only add file if same extension as selected file (exclude save and other files)
+            if file.endswith(file_extension): #only add file if same extension as selected file (exclude save and other files)
                 pages_list.append(file)
+#TEMPORARY        
+        #number_pages.set(str(len(pages_list)))       
+        
+        #limit pages if too many
+        if len(pages_list) > 300:
+            current_page_index = pages_list.index(current_page_name.get())
+            lower_limit = max(0, current_page_index - 300)
+            upper_limit = min(current_page_index + 300, len(pages_list))
+            pages_list = pages_list[lower_limit : upper_limit]
         
         #update listbox of pages
         page_listbox.delete(0, END)
@@ -225,6 +253,9 @@ def set_filepath(*args):
         save_file = shelve.open(os.path.join(page_folder.get(), 'translations'), writeback = True)
         if 'translations' in list(save_file.keys()): #if save data exists
             translations = save_file['translations']
+            for file in pages_list: #if pages are missing from dictionary
+                if file not in translations:
+                    translations[file] = []
             load_translations()
         else: #if no save file, reset to blank
             translations = {} #reset translation objects dictionary
@@ -341,14 +372,18 @@ def canvas_click(event):
             tags = page.gettags(item)
             if len(tags) == 2 and tags[0] not in results:
                 results.append(tags[0])
-        if results == []:
+        if results == []: #if not on object
             if int(page.canvasx(event.x)) < int(width * zoom_factor) and int(page.canvasy(event.y)) < int(height * zoom_factor): #if on image
                 new_translation(event)
             else:
                 textbox_out()
                 page.focus_set()
         else:
-            activate_translation(find_closest_translation(find_translations(results), event))
+            closest = find_closest_translation(find_translations(results), event)
+            if closest == active_translation:
+                on_press(closest, event)
+            else:
+                activate_translation(closest)
     return 
 
 #create a new translation object and add it to the translations dictionary
@@ -382,9 +417,38 @@ def find_closest_translation(translations, event):
         closest = translations[0]
     return closest
 
+#start drag of object
+def on_press(item, event):
+    global drag_item, drag_x, drag_y
+    drag_item = item
+    drag_x = event.x
+    drag_y = event.y
+    return
+
+#end drag of object
+def on_release(event):
+    global drag_item
+    if drag_item is not None:
+        global drag_x, drag_y
+        drag_item.x = int(drag_item.x)
+        drag_item.y = int(drag_item.y)
+        if drag_item.x < 0:
+            drag_item.x = 10
+        if drag_item.x > width:
+            drag_item.x = width - 10
+        if drag_item.y < 0:
+            drag_item.y = 10
+        if drag_item.y > height:
+            drag_item.y = height - 10
+        drag_item.move_zoom() #repositions the objects by coordinate
+        drag_item = None
+        drag_x = 0
+        drag_y = 0
+    return
+
 #event binding: determine if mouse is over translation and act accordingly
 def mouseover(event):
-    if current_image is not None and active_translation == None:
+    if current_image is not None and drag_item is None and active_translation == None:
         overlapping = page.find_enclosed(page.canvasx(event.x) - 15, page.canvasy(event.y) - 15, page.canvasx(event.x) + 15, page.canvasy(event.y) + 15)
         results = []
         for item in overlapping:
@@ -402,6 +466,31 @@ def mouseover(event):
         else:
             if mouseover_translation is not None:
                 mouseover_translation.mouseover_out()
+    elif drag_item is not None:
+        global drag_x, drag_y
+        delta_x = event.x - drag_x
+        delta_y = event.y - drag_y
+        drag_item.move(delta_x, delta_y)
+        drag_x = event.x
+        drag_y = event.y
+    return
+
+def delete_translation(*args):
+    if active_translation is not None:
+        to_be_deleted = active_translation
+        if active_translation.text == "":
+            active_translation.deactivate()
+        elif delete_toggle.get() == "disabled":
+            if to_be_deleted.active:
+                to_be_deleted.deactivate()
+            to_be_deleted.delete()
+        else:
+            confirmation = messagebox.askokcancel("Confirm deletion", "Are you sure you want to delete this translation?\n(You can disable this popup by checking the checkbox)")
+            if confirmation:
+                if to_be_deleted.active:
+                    to_be_deleted.deactivate()                
+                to_be_deleted.delete()
+    save() #save the deletion
     return
 
 #colour changing functions
@@ -508,6 +597,9 @@ current_image = None #holds displayed image
 active_translation = None #the selected translation
 mouseover_translation = None #translation being mouseover'd
 translations = {} #holds translation objects for the entire folder
+drag_item = None
+drag_x = 0
+drag_y = 0
 
 #App frame and settings
 frame = ttk.Frame(root)
@@ -540,9 +632,13 @@ listbox_scrollbar.pack(side = RIGHT, fill = Y)
 listbox_scrollbar.config(command = page_listbox.yview) #connect the two
 page_listbox.config(yscrollcommand = listbox_scrollbar.set)
 
+#Prev and Next buttons
+ttk.Button(menu_frame, text = "<", width = 5, command = prev_page).grid(row = 5, column = 1, sticky = (S, E)) #prev
+ttk.Button(menu_frame, text = ">", width = 5, command = next_page).grid(row = 5, column = 2, sticky = (S, W)) #next
+
 #colour changes
 colour_frame = ttk.Frame(menu_frame)
-colour_frame.grid(row = 5, column = 1, columnspan = 2, pady = 3, sticky = S)
+colour_frame.grid(row = 6, column = 1, columnspan = 2, pady = 3, sticky = S)
 Button(colour_frame, width = 2, borderwidth = 1, activebackground = "black", background = "black", relief = SUNKEN, command = black).grid(row = 2, column = 1)
 Button(colour_frame, width = 2, borderwidth = 1, activebackground = "red", background = "red", relief = SUNKEN, command = red).grid(row = 2, column = 2)
 Button(colour_frame, width = 2, borderwidth = 1, activebackground = "DarkOrange2", background = "DarkOrange2", relief = SUNKEN, command = DarkOrange2).grid(row = 2, column = 3)
@@ -552,9 +648,21 @@ Button(colour_frame, width = 2, borderwidth = 1, activebackground = "blue", back
 Button(colour_frame, width = 2, borderwidth = 1, activebackground = "purple4", background = "purple4", relief = SUNKEN, command = purple4).grid(row = 3, column = 3)
 Button(colour_frame, width = 2, borderwidth = 1, activebackground = "DeepPink3", background = "DeepPink3", relief = SUNKEN, command = DeepPink3).grid(row = 3, column = 4)
 
-#Prev and Next buttons
-ttk.Button(menu_frame, text = "<", width = 5, command = prev_page).grid(row = 6, column = 1, sticky = (S, E)) #prev
-ttk.Button(menu_frame, text = ">", width = 5, command = next_page).grid(row = 6, column = 2, sticky = (S, W)) #next
+#Delete
+delete_frame = ttk.Frame(menu_frame)
+delete_frame.grid(row = 7, column = 1, columnspan = 2, pady = 2, sticky = (S, E, W))
+Button(delete_frame, text = "Delete", width = 6, command = delete_translation).grid(row = 1, column = 1, padx = (10, 4), sticky = (S, E))
+delete_toggle = StringVar() #variable for the checkbox
+delete_checkbox = Checkbutton(delete_frame, text = "x", variable = delete_toggle, onvalue = "disabled", offvalue = "enabled")
+delete_checkbox.grid(row = 1, column = 2, sticky = (S, W))
+delete_checkbox.deselect()
+
+#
+#TEMPORARY
+#
+#ttk.Label(menu_frame, text = "Number of pages:").grid(row = 8, column = 1, columnspan = 2, padx = 5, sticky = (E, W))
+#number_pages = StringVar()
+#ttk.Label(menu_frame, textvariable = number_pages).grid(row = 9, column = 1, columnspan = 2, padx = 5, sticky = (E, W))
 
 #create page image (canvas)
 canvas_frame = ttk.Frame(frame) #frame to hold canvas
@@ -591,6 +699,7 @@ page_listbox.bind("<Double-Button-1>", listbox_change_page) #change active page 
 page.bind("<MouseWheel>", zoom) #zoom using the mouse wheel
 page.bind("<Button-1>", canvas_click) #create a new object
 page.bind("<Motion>", mouseover)
+page.bind("<ButtonRelease-1>", on_release)
 translation_textbox.bind("<FocusOut>", textbox_out) #focus off of text box
 translation_textbox.bind("<Escape>", textbox_out) #press esc when editing
 

@@ -83,6 +83,7 @@ class Annotation(object):
         page.move(self.outer_circle, screen_delta_x, screen_delta_y)
         page.move(self.vline, screen_delta_x, screen_delta_y)
         page.move(self.hline, screen_delta_x, screen_delta_y)
+        #set coordinates
         self.x += screen_delta_x / zoom_factor
         self.y += screen_delta_y / zoom_factor
         self.effective_x += screen_delta_x
@@ -117,6 +118,7 @@ class Annotation(object):
         page.coords(self.hline, self.effective_x - 15, self.effective_y, self.effective_x + 15, self.effective_y)
         return
     
+    #change the displayed colour of the object
     def change_colour(self, colour):
         page.itemconfig(self.inner_circle, outline = colour)
         page.itemconfig(self.outer_circle, outline = colour)
@@ -152,6 +154,7 @@ class Annotation(object):
             self.delete()
         return     
     
+    #handle the mouse moving over the object
     def mouseover_in(self):
         global mouseover_translation
         assert mouseover_translation == None, "mouseover_translation already filled"
@@ -161,6 +164,7 @@ class Annotation(object):
         self.mouseover = True
         return
     
+    #handle the mouse moving out of the object
     def mouseover_out(self):
         global mouseover_translation
         assert mouseover_translation == self, "attempted to de-mouseover non mouseovered object"
@@ -198,8 +202,12 @@ def load_page(full_path):
     try: #check if image is load-able
             new_image = ImageTk.PhotoImage(Image.open(full_path))
     except: #throw an error and abort if not
-            file_extension = os.path.basename(full_path)[os.path.basename(full_path).rfind('.'):]
-            messagebox.showerror("Unable to load file", "Unable to load filetype " + file_extension + ".")      
+            dot_index = os.path.basename(full_path).rfind('.')
+            if dot_index > -1: #files with extensions
+                file_extension = os.path.basename(full_path)[dot_index:]
+                messagebox.showerror("Unable to load file", "Unable to load filetype " + file_extension + ".")     
+            else: #files without extensions
+                messagebox.showerror("Unable to load file", "Unable to load selected file.")
             return False #abort and return failure for set_filepath() to deal with   
 
     global height, width, current_image
@@ -210,8 +218,7 @@ def load_page(full_path):
     #set location strings
     page_path.set(full_path)
     page_folder.set(os.path.dirname(full_path))
-    current_page_name.set(os.path.basename(full_path))
-#kind of inefficient to load then fit - consider streamlining later    
+    current_page_name.set(os.path.basename(full_path))  
     
     #load image to page
     page.image = ImageTk.PhotoImage(Image.open(page_path.get())) 
@@ -366,7 +373,7 @@ def true_coordinates(screen_x, screen_y):
 # Translation object functions
 #
 
-#find a translation or list of translations in the current page
+#convert str representation of objects to objects
 def find_translations(list_of_ids):
     matches = []
     for search_query in list_of_ids:
@@ -381,7 +388,7 @@ def canvas_click(event):
     if current_image is not None:
         overlapping = page.find_enclosed(page.canvasx(event.x) - 15, page.canvasy(event.y) - 15, page.canvasx(event.x) + 15, page.canvasy(event.y) + 15)
         results = []
-        for item in overlapping:
+        for item in overlapping: #find all items the mouse is covering
             tags = page.gettags(item)
             if len(tags) == 2 and tags[0] not in results:
                 results.append(tags[0])
@@ -391,7 +398,7 @@ def canvas_click(event):
             else:
                 textbox_out()
                 page.focus_set()
-        else:
+        else: #if there are results
             closest = find_closest_translation(find_translations(results), event)
             if closest == active_translation:
                 on_press(closest, event)

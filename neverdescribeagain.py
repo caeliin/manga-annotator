@@ -574,7 +574,7 @@ def read_translation():
 
 #event binding: deactivates active translation when clicking out
 def textbox_out(*args):
-    if active_translation is not None:    
+    if active_translation is not None and drag_item is None:    
         active_translation.deactivate()
         save()
     return    
